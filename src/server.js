@@ -14,12 +14,55 @@ const AUTO_NEXT_HAND_MS = 6000;      // ショーダウン後、次ハンド自�
 const DISCONNECT_ACT_MS = 12000;     // 切断者の手番を自動処理するまで
 const STREET_PAUSE_MS = 1200;        // ベッティングラウンド完了→次のカードを開くまでの「ため」
 
-// ---- 静的ファイル ----
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || '';
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || '';
+
+// ---- HTTP（静的ファイル + Discord OAuth 用API）----
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
-const server = http.createServer((req, res) => {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
-  if (urlPath === '/') urlPath = '/index.html';
-  const filePath = path.join(PUBLIC_DIR, path.normalize(urlPath));
+function readBody(req) {
+  return new Promise((resolve) => {
+    let d = ''; req.on('data', (c) => { d += c; if (d.length > 1e5) req.destroy(); });
+    req.on('end', () => resolve(d));
+  });
+}
+const server = http.createServer(async (req, res) => {
+  const urlPath = decodeURIComponent(req.url.split('?')[0]);
+
+  // Discord Activity: クライアントに公開してよい設定（Client ID）を返す
+  if (urlPath === '/api/config') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ discordClientId: DISCORD_CLIENT_ID }));
+    return;
+  }
+  // Discord Activity: 認可コード → アクセストークン交換（シークレットはサーバーのみ）
+  if (urlPath === '/api/token' && req.method === 'POST') {
+    try {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      if (!body.code || !DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'missing code or server not configured' })); return;
+      }
+      const params = new URLSearchParams({
+        client_id: DISCORD_CLIENT_ID,
+        client_secret: DISCORD_CLIENT_SECRET,
+        grant_type: 'authorization_code',
+        code: body.code,
+      });
+      const r = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params,
+      });
+      const data = await r.json();
+      res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(r.ok ? { access_token: data.access_token } : { error: data.error_description || 'token exchange failed' }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'server error' }));
+    }
+    return;
+  }
+
+  // 静的ファイル
+  let p = urlPath === '/' ? '/index.html' : urlPath;
+  const filePath = path.join(PUBLIC_DIR, path.normalize(p));
   if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end(); return; }
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }

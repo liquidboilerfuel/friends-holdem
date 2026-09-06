@@ -6,10 +6,15 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node src/handEval.test.js"
+    "test": "node src/handEval.test.js",
+    "build:discord": "esbuild src/discord-entry.js --bundle --format=iife --outfile=public/discord-sdk.js --minify --target=es2019"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0",
+    "esbuild": "^0.28.2"
   },
   "engines": {
     "node": ">=18"

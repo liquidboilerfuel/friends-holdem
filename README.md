@@ -58,10 +58,13 @@ npx cloudflared tunnel --url http://localhost:3000
 ## 構成
 
 ```
-src/handEval.js   役の評価（7枚→最強5枚）
-src/game.js       ゲーム進行エンジン（サーバー権威）
-src/server.js     HTTP + WebSocket サーバー、ルーム管理、手札の個別配信
-public/index.html クライアント（1ファイル、素のJS）
+src/handEval.js      役の評価（7枚→最強5枚）
+src/game.js          ゲーム進行エンジン（サーバー権威）
+src/server.js        HTTP + WebSocket サーバー、ルーム管理、手札配信、Discord用API
+src/bot.js           CPUの思考ロジック
+src/discord-entry.js Discord Embedded App SDK のバンドル元
+public/index.html    クライアント（1ファイル、素のJS）
+public/discord-sdk.js  バンドル済みSDK（`npm run build:discord` で再生成）
 ```
 
 ## テスト
@@ -71,9 +74,30 @@ node src/handEval.test.js   # 役評価のユニットテスト
 node src/game.sim.js        # 6000ハンド規模のランダム対戦でチップ保存等を検証
 ```
 
-## Discord で遊ぶ場合
+## Discord Activity として遊ぶ
 
-このままWebアプリとして遊べますが、Discord内で起動したいなら
-**Discord Activity（Embedded App SDK）** としてこのWebアプリを載せる形が使えます。
-Discord Developer Portal でアプリを作り、Activity の URL Mapping にこのサーバーのURLを指定します。
-その際は Discord の OAuth（参加者の識別）と、iframe 用の CSP 調整が追加で必要になります。
+Discord内のボイスチャンネルから直接起動できる「Activity」に対応済みです。実装はこのリポジトリに入っているので、以下の設定を行えば動きます（コード変更は不要）。
+
+### 1. Discord Developer Portal でアプリを作る
+1. https://discord.com/developers/applications → New Application。
+2. **OAuth2** で「Client ID」と「Client Secret」を控える。
+3. 左メニューの **Activities**（Embedded App）を有効化し、**URL Mappings** に
+   - Prefix: `/` → Target: `kochi-poker.onrender.com`（あなたのRenderホスト）
+   を1つ追加。
+4. Activities の対象デバイス（Desktop/Web など）を有効にする。
+
+### 2. Render に環境変数を設定
+Render のサービス → Environment に以下を追加：
+- `DISCORD_CLIENT_ID` = 上のClient ID
+- `DISCORD_CLIENT_SECRET` = 上のClient Secret
+
+保存すると再デプロイされ、`/api/config` と `/api/token`（コード→トークン交換）が有効になります。
+
+### 3. 遊ぶ
+ボイスチャンネルの Activity 一覧（ロケット/コントローラー）から起動。Discord内で開かれた場合は参加画面を出さず、**Discordの本人名で自動参加**し、同じActivityインスタンスの全員が同卓します。通常のブラウザで直URLを開いたときは、従来どおり名前・アイコン・部屋コードの参加画面になります。
+
+### 仕組み
+- `public/index.html` は起動時にDiscord内かどうかを判定（`frame_id` クエリ / `*.discordsays.com`）。
+- Discord内なら Embedded App SDK でハンドシェイク→OAuth(`identify`)→`/api/token` でトークン交換→本人情報取得→自動参加。
+- WebSocket・API は同一オリジン（Discordのプロキシ経由）で動くため、URL Mappings を上記の通り設定しておくこと。
+- もしSDKを更新したら `npm run build:discord` で `public/discord-sdk.js` を作り直す。

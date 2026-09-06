@@ -1,0 +1,17 @@
+{
+  "name": "friends-holdem",
+  "version": "0.1.0",
+  "description": "内輪で遊ぶテキサスホールデム (Web + WebSocket, サーバー権威)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node src/handEval.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

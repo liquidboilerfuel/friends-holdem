@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: friends-holdem
+    name: kochi-poker
     runtime: node
     plan: free
     buildCommand: npm install

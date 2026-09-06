@@ -367,6 +367,7 @@
 
 <div id="toast"></div>
 
+<script src="discord-sdk.js"></script>
 <script>
 "use strict";
 const SUIT = { s:{sym:'♠',red:false}, h:{sym:'♥',red:true}, d:{sym:'♦',red:true}, c:{sym:'♣',red:false} };
@@ -996,6 +997,40 @@ function clamp(v,a,b){ return Math.max(a,Math.min(b,isNaN(v)?a:v)); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 let toastTimer;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.style.display='none',3000); }
+
+// ---- Discord Activity 起動 ----
+// Discord内（iframe）で開かれたときは、参加画面を出さずにDiscordの本人情報で自動参加する。
+// 通常のブラウザで開いたとき（Renderの直URL等）は何もしない＝従来の参加画面。
+async function discordBootstrap(){
+  const qs=new URLSearchParams(location.search);
+  const inDiscord = qs.has('frame_id') || location.hostname.endsWith('.discordsays.com');
+  if(!inDiscord) return;
+  if(!window.DiscordEmbedded){ toast('Discord SDKが読み込めませんでした'); return; }
+  document.getElementById('join').style.display='none';
+  toast('Discordに接続中…');
+  try{
+    const cfg=await (await fetch('/api/config')).json();
+    const clientId=cfg.discordClientId;
+    if(!clientId) throw new Error('サーバーにClient IDが未設定');
+    const sdk=new window.DiscordEmbedded.DiscordSDK(clientId);
+    await sdk.ready();
+    const { code }=await sdk.commands.authorize({ client_id:clientId, response_type:'code', state:'', prompt:'none', scope:['identify'] });
+    const tok=await (await fetch('/api/token',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ code }) })).json();
+    if(!tok.access_token) throw new Error(tok.error||'認証に失敗');
+    const auth=await sdk.commands.authenticate({ access_token: tok.access_token });
+    const u=auth.user||{};
+    myId='d_'+(u.id||Math.random().toString(36).slice(2));
+    myName=(u.global_name||u.username||'プレイヤー').slice(0,16);
+    myAvatar='🎮';
+    myRoom=('DC'+(sdk.instanceId||sdk.channelId||'ROOM')).replace(/[^A-Za-z0-9]/g,'').slice(0,12).toUpperCase();
+    ac();            // 音を有効化（ユーザー操作起点のActivity起動）
+    connect();       // 参加（'joined'受信でゲーム画面へ）
+  }catch(e){
+    toast('Discord接続に失敗：'+(e&&e.message||e));
+    document.getElementById('join').style.display='flex'; // フォールバックで通常参加も可能に
+  }
+}
+discordBootstrap();
 </script>
 </body>
 </html>
